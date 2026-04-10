@@ -1,0 +1,25 @@
+defaults:
+  - db: credentials
+  - schema: policy-schema
+  - agent: iql
+  - override hydra/launcher: joblib
+  - _self_
+
+run: 0
+db_prefix: lingwei
+db_name: unifloral
+seed: 0
+dataset: halfcheetah-medium-v2
+log: false
+
+hydra:
+  mode: MULTIRUN
+  job:
+    chdir: false
+  launcher:
+    n_jobs: ${oc.env:NUM_JOBS,1}
+  sweeper:
+    params:
+      seed: range(0,5)
+      dataset: halfcheetah-medium-v2
+      agent: iql
