@@ -1,101 +1,84 @@
-<h1 align="center">🌹 Unifloral: Unified Offline Reinforcement Learning</h1>
+# unifloral_hydra
 
-<p align="center">
-    <a href= "https://arxiv.org/abs/2504.11453">
-        <img src="https://img.shields.io/badge/arXiv-2504.11453-b31b1b.svg" /></a>
-</p>
+`unifloral_hydra` is a Hydra-based experiment wrapper around the original single-file `unifloral` implementation.
 
-Unified implementations and rigorous evaluation for offline reinforcement learning - built by [Matthew Jackson](https://github.com/EmptyJackson), [Uljad Berdica](https://github.com/uljad), and [Jarek Liesen](https://github.com/keraJLi).
+The goal of this fork is simple:
 
-## 💡 Code Philosophy
+- keep the fast JAX training path in [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py)
+- add config-driven sweeps over agents, datasets, and seeds
+- store results to MySQL in the same spirit as `d4rl_jax`
+- keep the repo simple instead of introducing a large framework rewrite
 
-- ⚛️ **Single-file**: We implement algorithms as standalone Python files.
-- 🤏 **Minimal**: We only edit what is necessary between algorithms, making comparisons straightforward.
-- ⚡️ **GPU-accelerated**: We use JAX and end-to-end compile all training code, enabling lightning-fast training.
+## What Changed
 
-Inspired by [CORL](https://github.com/tinkoff-ai/CORL) and [CleanRL](https://github.com/vwxyzjn/cleanrl) - check them out!
+Compared with the upstream `unifloral` repo, this fork adds:
 
-## 🤖 Algorithms
+- a Hydra launcher in [`main.py`](/Users/lingweizhu/Desktop/workspace/unifloral/main.py)
+- Hydra agent config groups in [`configs/agent/`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/agent)
+- top-level sweep configuration in [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml)
+- optional MySQL logging in [`experiment.py`](/Users/lingweizhu/Desktop/workspace/unifloral/experiment.py)
+- database schema config in [`configs/schema/policy-schema.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/schema/policy-schema.yaml)
+- database credentials config in [`configs/db/`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/db)
 
-We provide two types of algorithm implementation:
+The training logic itself is still executed by [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py). The main change there is that the script now exposes `run(args)` so the Hydra launcher can call it and log results afterward.
 
-1. **Standalone**: Each algorithm is implemented as a [single file](algorithms) with minimal dependencies, making it easy to understand and modify.
-2. **Unified**: Most algorithms are available as configs for our unified implementation [`unifloral.py`](algorithms/unifloral.py).
+## Repo Layout
 
-After training, final evaluation results are saved to `.npz` files in [`final_returns/`](final_returns) for analysis using our evaluation protocol.
+- [`main.py`](/Users/lingweizhu/Desktop/workspace/unifloral/main.py): Hydra entrypoint
+- [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py): original unified training implementation
+- [`experiment.py`](/Users/lingweizhu/Desktop/workspace/unifloral/experiment.py): MySQL logging helpers
+- [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml): default run and sweep definition
+- [`configs/agent/`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/agent): per-agent defaults
 
-The repo now supports two workflows:
+Available Hydra agent configs:
 
-1. Direct single-file execution with Tyro, e.g. `python algorithms/unifloral.py --help`
-2. A Hydra launcher via `python main.py`, with multirun sweeps and optional MySQL logging
+- `bc`
+- `edac`
+- `iql`
+- `mobrac`
+- `rebrac`
+- `sac_n`
+- `td3_awr`
+- `td3_bc`
 
-### Model-free
+## Installation
 
-| Algorithm | Standalone | Unified | Extras |
-| --- | --- | --- | --- |
-| BC | [`bc.py`](algorithms/bc.py) | [`unifloral/bc.yaml`](configs/unifloral/bc.yaml) | - |
-| SAC-N | [`sac_n.py`](algorithms/sac_n.py) | [`unifloral/sac_n.yaml`](configs/unifloral/sac_n.yaml) | [[ArXiv]](https://arxiv.org/abs/2110.01548) |
-| EDAC | [`edac.py`](algorithms/edac.py) | [`unifloral/edac.yaml`](configs/unifloral/edac.yaml) | [[ArXiv]](https://arxiv.org/abs/2110.01548) |
-| CQL | [`cql.py`](algorithms/cql.py) | - | [[ArXiv]](https://arxiv.org/abs/2006.04779) |
-| IQL | [`iql.py`](algorithms/iql.py) | [`unifloral/iql.yaml`](configs/unifloral/iql.yaml) | [[ArXiv]](https://arxiv.org/abs/2110.06169) |
-| TD3-BC | [`td3_bc.py`](algorithms/td3_bc.py) | [`unifloral/td3_bc.yaml`](configs/unifloral/td3_bc.yaml) | [[ArXiv]](https://arxiv.org/abs/2106.06860) |
-| ReBRAC | [`rebrac.py`](algorithms/rebrac.py) | [`unifloral/rebrac.yaml`](configs/unifloral/rebrac.yaml) | [[ArXiv]](https://arxiv.org/abs/2305.09836) |
-| TD3-AWR | - | [`unifloral/td3_awr.yaml`](configs/unifloral/td3_awr.yaml) | [[ArXiv]](https://arxiv.org/abs/2504.11453) |
+Use the `unifloral` conda environment:
 
-### Model-based
-
-We implement a single script for dynamics model training: [`dynamics.py`](algorithms/dynamics.py), with config [`dynamics.yaml`](configs/dynamics.yaml).
-
-| Algorithm | Standalone | Unified | Extras |
-| --- | --- | --- | --- |
-| MOPO | [`mopo.py`](algorithms/mopo.py) | - | [[ArXiv]](https://arxiv.org/abs/2005.13239) |
-| MOReL | [`morel.py`](algorithms/morel.py) | - | [[ArXiv]](https://arxiv.org/abs/2005.05951) |
-| COMBO | [`combo.py`](algorithms/combo.py) | - | [[ArXiv]](https://arxiv.org/abs/2102.08363) |
-| MoBRAC | - | [`unifloral/mobrac.yaml`](configs/unifloral/mobrac.yaml) | [[ArXiv]](https://arxiv.org/abs/2504.11453) |
-
-New ones coming soon 👀
-
-## 📊 Evaluation
-
-Our evaluation script ([`evaluation.py`](evaluation.py)) implements the protocol described in our paper, analysing the performance of a UCB bandit over a range of policy evaluations.
-
-```python
-from evaluation import load_results_dataframe, bootstrap_bandit_trials
-import jax.numpy as jnp
-
-# Load all results from the final_returns directory
-df = load_results_dataframe("final_returns")
-
-# Run bandit trials with bootstrapped confidence intervals
-results = bootstrap_bandit_trials(
-    returns_array=jnp.array(policy_returns),  # Shape: (num_policies, num_rollouts)
-    num_subsample=8,     # Number of policies to subsample
-    num_repeats=1000,    # Number of bandit trials
-    max_pulls=200,       # Maximum pulls per trial
-    ucb_alpha=2.0,       # UCB exploration coefficient
-    n_bootstraps=1000,   # Bootstrap samples for confidence intervals
-    confidence=0.95      # Confidence level
-)
-
-# Access results
-pulls = results["pulls"]                      # Number of pulls at each step
-means = results["estimated_bests_mean"]       # Mean score of estimated best policy
-ci_low = results["estimated_bests_ci_low"]    # Lower confidence bound
-ci_high = results["estimated_bests_ci_high"]  # Upper confidence bound
+```bash
+conda activate unifloral
+pip install -r requirements.txt
 ```
 
-## ⚙️ Launcher
+This repo still depends on D4RL and `mujoco-py`, so full environment runtime is easiest on Linux. On macOS Apple Silicon, import and config validation work, but MuJoCo-backed D4RL environments are still hard to build reliably.
 
-The root [`main.py`](main.py) is now a Hydra entrypoint around the existing single-file [`algorithms/unifloral.py`](algorithms/unifloral.py) implementation.
+## Running
 
-It keeps the fast training path in `unifloral.py`, while adding:
+The default launcher is Hydra:
 
-- Hydra multirun sweeps
-- per-agent config groups under [`configs/agent/`](configs/agent)
-- a simple top-level `dataset` field, so you can sweep environments directly from [`configs/config.yaml`](configs/config.yaml)
-- optional MySQL logging with the same `runs` / `returns` / `summary` pattern used in `d4rl_jax`
+```bash
+NUM_JOBS=1 python main.py
+```
 
-The default experiment definition lives in [`configs/config.yaml`](configs/config.yaml). A typical setup looks like:
+By default, Hydra reads [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml), composes the selected `agent` config, and executes the sweep declared in `hydra.sweeper.params`.
+
+If you want a single run instead of a sweep:
+
+```bash
+NUM_JOBS=1 python main.py hydra.mode=RUN agent=iql dataset=halfcheetah-medium-v2 seed=0
+```
+
+You can still run the original single-file script directly:
+
+```bash
+python algorithms/unifloral.py --help
+```
+
+## Sweep Configuration
+
+The intended workflow is to define sweeps in [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml), not by typing long command lines.
+
+Example:
 
 ```yaml
 defaults:
@@ -105,12 +88,17 @@ defaults:
   - override hydra/launcher: joblib
   - _self_
 
+run: 0
+db_prefix: lingwei
+db_name: unifloral
 seed: 0
 dataset: halfcheetah-medium-v2
 log: false
 
 hydra:
   mode: MULTIRUN
+  job:
+    chdir: false
   launcher:
     n_jobs: ${oc.env:NUM_JOBS,1}
   sweeper:
@@ -120,23 +108,36 @@ hydra:
       agent: iql,rebrac,td3_bc
 ```
 
-On a single GPU machine, a good default is:
+This setup is designed for exactly the workflow of:
 
-```bash
-NUM_JOBS=1 python main.py
+- one or more agents
+- multiple D4RL datasets
+- multiple random seeds
+- sequential execution on a single GPU via `NUM_JOBS=1`
+
+Hydra handles the Cartesian product over the sweep parameters, while the actual training is still done inside [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py).
+
+## Agent Defaults
+
+Each agent has its own Hydra config file under [`configs/agent/`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/agent).
+
+For example:
+
+- [`configs/agent/iql.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/agent/iql.yaml)
+- [`configs/agent/rebrac.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/agent/rebrac.yaml)
+- [`configs/agent/td3_bc.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/agent/td3_bc.yaml)
+
+These files contain the per-agent hyperparameter defaults that used to live in the old sweep presets. There is no environment-specific config group in this fork; datasets are swept directly through the top-level `dataset` field.
+
+Top-level values from [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml) override agent defaults when both define the same key.
+
+## MySQL Logging
+
+Database logging is disabled by default in [`configs/db/credentials.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/db/credentials.yaml):
+
+```yaml
+disable: true
 ```
-
-`log: false` disables WandB by default so local Hydra/MySQL sweeps can run without a WandB account. You can still enable it with `log=true`.
-
-You can still override anything from the CLI when needed:
-
-```bash
-NUM_JOBS=1 python main.py hydra.sweeper.params.agent=iql,rebrac hydra.sweeper.params.dataset=halfcheetah-medium-v2,hopper-medium-v2
-```
-
-## 🗄️ MySQL
-
-Database logging is disabled by default in [`configs/db/credentials.yaml`](configs/db/credentials.yaml).
 
 To enable it:
 
@@ -144,23 +145,55 @@ To enable it:
 cp configs/db/credentials-local.example.yaml configs/db/credentials-local.yaml
 ```
 
-Then fill in your MySQL credentials and run:
+Fill in your credentials in [`configs/db/credentials-local.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/db/credentials-local.yaml), then run:
 
 ```bash
 NUM_JOBS=1 python main.py db=credentials-local
 ```
 
-The default schema lives in [`configs/schema/policy-schema.yaml`](configs/schema/policy-schema.yaml).
+The default schema is defined in [`configs/schema/policy-schema.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/schema/policy-schema.yaml) and writes to:
 
-## 📝 Cite us!
-```bibtex
-@misc{jackson2025clean,
-      title={A Clean Slate for Offline Reinforcement Learning},
-      author={Matthew Thomas Jackson and Uljad Berdica and Jarek Liesen and Shimon Whiteson and Jakob Nicolaus Foerster},
-      year={2025},
-      eprint={2504.11453},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2504.11453},
-}
+- `runs`
+- `returns`
+- `summary`
+
+The database name is composed as:
+
+```text
+{db_prefix}_{db_name}
 ```
+
+## What Stayed Unchanged
+
+The performance-sensitive training path was intentionally left alone as much as possible.
+
+- the core update logic in `unifloral.py` was not rewritten into Hydra
+- the launcher builds an `Args` object and calls `run(args)`
+- Hydra and MySQL logic live outside the training step implementation
+- direct `tyro` usage still works through `python algorithms/unifloral.py ...`
+
+This means the fork changes experiment orchestration and result persistence, not the core learning algorithm implementation.
+
+## Verification Status
+
+What has been verified in the `unifloral` conda environment:
+
+- Hydra config composition works
+- `main.py` imports and resolves agent configs correctly
+- the launcher can build `Args` from Hydra config
+- MySQL logging code is wired into the launcher path
+- edited Python files pass syntax checks
+
+What has not been fully verified on this macOS Apple Silicon machine:
+
+- full D4RL MuJoCo runtime
+- end-to-end training execution with actual MuJoCo environments
+
+That limitation comes from the D4RL and `mujoco-py` stack on Apple Silicon, not from the Hydra launcher itself.
+
+## Upstream
+
+This fork is based on the original `unifloral` repository by Matthew Jackson, Uljad Berdica, and Jarek Liesen:
+
+- upstream repo: [EmptyJackson/unifloral](https://github.com/EmptyJackson/unifloral)
+- paper: [A Clean Slate for Offline Reinforcement Learning](https://arxiv.org/abs/2504.11453)
