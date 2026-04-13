@@ -15,8 +15,10 @@ hydra:
   mode: MULTIRUN
   job:
     chdir: false
+  launcher:
+    n_jobs: ${oc.env:NUM_JOBS,1}
   sweeper:
     params:
       seed: range(0,5)
-      dataset: halfcheetah-medium-v2
+      dataset: halfcheetah-medium-expert-v2, halfcheetah-medium-replay-v2, walker2d-medium-expert-v2, walker2d-medium-replay-v2, hopper-medium-replay-v2, hopper-medium-expert-v2   
       agent: iql
