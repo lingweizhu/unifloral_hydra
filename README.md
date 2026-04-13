@@ -57,15 +57,15 @@ This repo still depends on D4RL and `mujoco-py`, so full environment runtime is 
 The default launcher is Hydra:
 
 ```bash
-NUM_JOBS=1 python main.py
+python main.py
 ```
 
-By default, Hydra reads [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml), composes the selected `agent` config, and executes the sweep declared in `hydra.sweeper.params`.
+By default, Hydra reads [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml), composes the selected `agent` config, and executes the sweep declared in `hydra.sweeper.params` sequentially. This repo intentionally uses Hydra's default launcher instead of the joblib launcher, because joblib can try to pickle D4RL/Gym/JAX objects and fail with errors such as `cannot pickle 'mmap.mmap' object`.
 
 If you want a single run instead of a sweep:
 
 ```bash
-NUM_JOBS=1 python main.py hydra.mode=RUN agent=iql dataset=halfcheetah-medium-v2 seed=0
+python main.py hydra.mode=RUN agent=iql dataset=halfcheetah-medium-v2 seed=0
 ```
 
 You can still run the original single-file script directly:
@@ -85,7 +85,6 @@ defaults:
   - db: credentials
   - schema: policy-schema
   - agent: iql
-  - override hydra/launcher: joblib
   - _self_
 
 run: 0
@@ -99,8 +98,6 @@ hydra:
   mode: MULTIRUN
   job:
     chdir: false
-  launcher:
-    n_jobs: ${oc.env:NUM_JOBS,1}
   sweeper:
     params:
       seed: range(0,5)
@@ -113,7 +110,7 @@ This setup is designed for exactly the workflow of:
 - one or more agents
 - multiple D4RL datasets
 - multiple random seeds
-- sequential execution on a single GPU via `NUM_JOBS=1`
+- sequential execution on a single GPU
 
 Hydra handles the Cartesian product over the sweep parameters, while the actual training is still done inside [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py).
 
@@ -148,7 +145,7 @@ cp configs/db/credentials-local.example.yaml configs/db/credentials-local.yaml
 Fill in your credentials in [`configs/db/credentials-local.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/db/credentials-local.yaml), then run:
 
 ```bash
-NUM_JOBS=1 python main.py db=credentials-local
+python main.py db=credentials-local
 ```
 
 The default schema is defined in [`configs/schema/policy-schema.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/schema/policy-schema.yaml) and writes to:
