@@ -8,6 +8,7 @@ flax
 optax
 hydra-core
 hydra-joblib-launcher
+hydra_colorlog
 omegaconf
 tyro
 wandb
