@@ -19,6 +19,13 @@ import optax
 import tyro
 import wandb
 
+warnings.filterwarnings(
+    "ignore",
+    message="WARN: Box bound precision lowered by casting to float32",
+    category=UserWarning,
+    module="gym.spaces.box",
+)
+
 try:
     from .dynamics import (
         Transition,
