@@ -33,6 +33,7 @@ The training logic itself is still executed by [`algorithms/unifloral.py`](/User
 Available Hydra agent configs:
 
 - `bc`
+- `bpr`
 - `edac`
 - `iql`
 - `mobrac`
