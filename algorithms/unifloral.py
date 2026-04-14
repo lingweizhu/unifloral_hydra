@@ -6,6 +6,13 @@ import os
 from timeit import default_timer as timer
 import warnings
 
+warnings.filterwarnings(
+    "ignore",
+    message=r".*Box bound precision lowered by casting to float32.*",
+    category=UserWarning,
+)
+
+
 import distrax
 import d4rl
 import flax.linen as nn
@@ -19,12 +26,7 @@ import optax
 import tyro
 import wandb
 
-warnings.filterwarnings(
-    "ignore",
-    message="WARN: Box bound precision lowered by casting to float32",
-    category=UserWarning,
-    module="gym.spaces.box",
-)
+
 
 try:
     from .dynamics import (
