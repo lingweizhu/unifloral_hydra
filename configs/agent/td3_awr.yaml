@@ -1,13 +1,5 @@
 agent_name: td3_awr
 algorithm: unifloral_td3_awr
-num_updates: 1000000
-eval_interval: 2500
-eval_workers: 8
-eval_final_episodes: 1000
-log: true
-wandb_project: unifloral
-wandb_team: flair
-wandb_group: debug
 lr: 1e-3
 actor_lr: 1e-3
 lr_schedule: constant

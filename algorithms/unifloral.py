@@ -107,6 +107,16 @@ class Args:
     ent_coef_init: float = 1.0  # Initial entropy coefficient
     actor_entropy_coef: float = 0.0  # Actor entropy coefficient
     critic_entropy_coef: float = 0.0  # Critic entropy coefficient
+    # --- Behavior Preference Regression ---
+    use_bpr: bool = False  # Whether to use Behavior Preference Regression actor loss
+    bpr_lambda: float = 1.0  # Preference regression KL/reward tradeoff
+    bpr_actor_coef: float = 1.0  # Actor loss coefficient for BPR
+    behavior_energy_lr: float = 1e-3
+    behavior_energy_num_layers: int = 3
+    behavior_energy_layer_width: int = 256
+    behavior_energy_num_negatives: int = 16
+    behavior_energy_temperature: float = 1.0
+    behavior_energy_pretrain_steps: int = 100_000
     # --- World model ---
     model_path: str = ""
     dataset_sample_ratio: float = 1.0  # Dataset sample ratio (set to 1 for model-free)
@@ -128,7 +138,8 @@ r"""
 """
 
 AgentTrainState = namedtuple(
-    "AgentTrainState", "actor actor_target vec_q vec_q_target value alpha"
+    "AgentTrainState",
+    "actor actor_target vec_q vec_q_target value alpha behavior_energy",
 )
 RunResult = namedtuple("RunResult", "eval_history summary final_info")
 
@@ -195,6 +206,27 @@ class StateValueFunction(nn.Module):
         return v.squeeze(-1)
 
 
+class BehaviorEnergy(nn.Module):
+    args: Args
+    data_mean: Transition
+    data_std: Transition
+
+    @nn.compact
+    def __call__(self, obs, action):
+        if self.args.norm_obs:
+            obs = (obs - self.data_mean.obs) / (self.data_std.obs + 1e-3)
+        x = jnp.concatenate([obs, action], axis=-1)
+        for _ in range(self.args.behavior_energy_num_layers):
+            x = nn.Dense(
+                self.args.behavior_energy_layer_width,
+                bias_init=constant(0.1),
+            )(x)
+            x = nn.relu(x)
+            x = nn.LayerNorm()(x) if self.args.critic_ln else x
+        energy = nn.Dense(1, bias_init=sym(3e-3), kernel_init=sym(3e-3))(x)
+        return energy.squeeze(-1)
+
+
 class Actor(nn.Module):
     args: Args
     data_mean: Transition
@@ -248,8 +280,21 @@ class EntropyCoef(nn.Module):
         return log_ent_coef
 
 
-def create_train_state(args, rng, network, dummy_input, is_actor=False, steps=None):
-    lr = args.actor_lr if is_actor else args.lr
+def create_train_state(
+    args,
+    rng,
+    network,
+    dummy_input,
+    is_actor=False,
+    is_behavior_energy=False,
+    steps=None,
+):
+    if is_behavior_energy:
+        lr = args.behavior_energy_lr
+    elif is_actor:
+        lr = args.actor_lr
+    else:
+        lr = args.lr
     if args.lr_schedule == "cosine":
         lr = optax.cosine_decay_schedule(lr, steps or args.num_updates)
     elif args.lr_schedule != "constant":
@@ -302,6 +347,48 @@ def sample_from_buffer(buffer, batch_size, rng):
     return jax.tree_map(lambda x: x[idxs], buffer)
 
 
+def aggregate_q_values(args, q_values):
+    if args.aggregate_q == "min":
+        return jnp.min(q_values)
+    if args.aggregate_q == "mean":
+        return jnp.mean(q_values)
+    if args.aggregate_q == "first":
+        return q_values[0]
+    raise ValueError(f"Unknown Q aggregation: {args.aggregate_q}")
+
+
+def make_behavior_energy_train_step(args, energy_apply_fn, dataset, num_actions):
+    """Make JIT-compatible behavior EBM pretraining step."""
+
+    def _train_step(runner_state, _):
+        rng, behavior_energy = runner_state
+
+        rng, rng_batch, rng_neg = jax.random.split(rng, 3)
+        batch = sample_from_buffer(dataset, args.batch_size, rng_batch)
+        neg_actions = jax.random.uniform(
+            rng_neg,
+            (args.batch_size, args.behavior_energy_num_negatives, num_actions),
+            minval=-1.0,
+            maxval=1.0,
+        )
+        actions = jnp.concatenate([batch.action[:, None, :], neg_actions], axis=1)
+        obs = jnp.repeat(batch.obs[:, None, :], actions.shape[1], axis=1)
+
+        @jax.value_and_grad
+        def _energy_loss_fn(params):
+            energy_fn = lambda obs, action: energy_apply_fn(params, obs, action)
+            energies = jax.vmap(jax.vmap(energy_fn))(obs, actions)
+            logits = -energies / args.behavior_energy_temperature
+            loss = -jax.nn.log_softmax(logits, axis=1)[:, 0].mean()
+            return loss
+
+        energy_loss, energy_grad = _energy_loss_fn(behavior_energy.params)
+        behavior_energy = behavior_energy.apply_gradients(grads=energy_grad)
+        return (rng, behavior_energy), {"behavior_energy_loss": energy_loss}
+
+    return _train_step
+
+
 r"""
           __/)
        .-(__(=:
@@ -322,10 +409,14 @@ def make_train_step(
     q_apply_fn,
     value_apply_fn,
     alpha_apply_fn,
+    energy_apply_fn,
     dataset,
     rollout_fn,
 ):
     """Make JIT-compatible agent train step, with optional model-based rollouts."""
+
+    if args.use_bpr and energy_apply_fn is None:
+        raise ValueError("BPR requires a behavior energy model")
 
     def _train_step(runner_state, _):
         rng, agent_state, rollout_buffer = runner_state
@@ -376,6 +467,7 @@ def make_train_step(
         def _actor_loss_function(params, rng):
             require_bc = args.actor_bc_coef > 0.0 or args.use_awr
             require_q = args.actor_q_coef > 0.0
+            require_bpr = args.use_bpr and args.bpr_actor_coef > 0.0
             if args.use_q_target_in_actor:
                 q_params = agent_state.vec_q_target.params
             else:
@@ -384,7 +476,8 @@ def make_train_step(
             def _compute_losses(rng, transition):
                 # --- Sample action ---
                 pi = actor_apply_fn(params, transition.obs)
-                sampled_action, log_pi = pi.sample_and_log_prob(seed=rng)
+                rng_action, rng_bpr = jax.random.split(rng)
+                sampled_action, log_pi = pi.sample_and_log_prob(seed=rng_action)
                 losses = {"entropy_loss": log_pi.sum()}
 
                 # --- Compute BC loss ---
@@ -410,16 +503,43 @@ def make_train_step(
                 # --- Compute Q loss ---
                 if require_q:
                     actor_q = q_apply_fn(q_params, transition.obs, sampled_action)
-                    if args.aggregate_q == "min":
-                        actor_q = jnp.min(actor_q)
-                    elif args.aggregate_q == "mean":
-                        actor_q = jnp.mean(actor_q)
-                    elif args.aggregate_q == "first":
-                        actor_q = actor_q[0]
-                    else:
-                        raise ValueError(f"Unknown Q aggregation: {args.aggregate_q}")
+                    actor_q = aggregate_q_values(args, actor_q)
                     losses["q_loss"] = -actor_q
                     losses["actor_q"] = actor_q  # Return for loss normalization
+
+                # --- Compute Behavior Preference Regression loss ---
+                if require_bpr:
+                    rng_a1, rng_a2 = jax.random.split(rng_bpr)
+                    a1 = jax.lax.stop_gradient(pi.sample(seed=rng_a1))
+                    a2 = jax.lax.stop_gradient(pi.sample(seed=rng_a2))
+                    logp1 = pi.log_prob(a1).sum()
+                    logp2 = pi.log_prob(a2).sum()
+                    q1 = aggregate_q_values(
+                        args, q_apply_fn(q_params, transition.obs, a1)
+                    )
+                    q2 = aggregate_q_values(
+                        args, q_apply_fn(q_params, transition.obs, a2)
+                    )
+                    e1 = energy_apply_fn(
+                        agent_state.behavior_energy.params, transition.obs, a1
+                    )
+                    e2 = energy_apply_fn(
+                        agent_state.behavior_energy.params, transition.obs, a2
+                    )
+                    behavior_pref = jax.lax.stop_gradient(e2 - e1)
+                    policy_pref = (logp1 - jax.lax.stop_gradient(q1)) - (
+                        logp2 - jax.lax.stop_gradient(q2)
+                    )
+                    bpr_loss = jnp.square(behavior_pref - args.bpr_lambda * policy_pref)
+                    losses.update(
+                        {
+                            "bpr_loss": bpr_loss,
+                            "bpr_behavior_pref": behavior_pref,
+                            "bpr_policy_pref": policy_pref,
+                            "bpr_q1": q1,
+                            "bpr_q2": q2,
+                        }
+                    )
                 return losses
 
             rng = jax.random.split(rng, args.batch_size)
@@ -437,6 +557,8 @@ def make_train_step(
                     lambda_ = jax.lax.stop_gradient(lambda_)
                     q_coef *= lambda_
                 losses["actor_loss"] += q_coef * losses["q_loss"]
+            if require_bpr:
+                losses["actor_loss"] += args.bpr_actor_coef * losses["bpr_loss"]
             if args.use_entropy_loss:
                 ent_coef = args.actor_entropy_coef * alpha
                 losses["actor_loss"] += ent_coef * losses["entropy_loss"]
@@ -567,6 +689,8 @@ def run(args: Args) -> RunResult:
     rng = jax.random.PRNGKey(args.seed)
     eval_history = []
     final_info = {}
+    if args.use_bpr and args.deterministic:
+        raise ValueError("BPR requires a stochastic actor so log probabilities exist")
 
     # --- Initialize logger ---
     if args.log:
@@ -623,6 +747,34 @@ def run(args: Args) -> RunResult:
         alpha_apply_fn = alpha_net.apply
     else:
         alpha, alpha_apply_fn = None, None
+    if args.use_bpr:
+        energy_net = BehaviorEnergy(args=args, data_mean=data_mean, data_std=data_std)
+        rng, rng_energy = jax.random.split(rng)
+        behavior_energy = create_train_state(
+            args,
+            rng_energy,
+            energy_net,
+            [dummy_obs, dummy_action],
+            is_behavior_energy=True,
+            steps=max(args.behavior_energy_pretrain_steps, 1),
+        )
+        energy_apply_fn = energy_net.apply
+        if args.behavior_energy_pretrain_steps > 0:
+            _energy_train_step_fn = make_behavior_energy_train_step(
+                args, energy_apply_fn, dataset, num_actions
+            )
+            (rng, behavior_energy), energy_loss = jax.lax.scan(
+                _energy_train_step_fn,
+                (rng, behavior_energy),
+                None,
+                args.behavior_energy_pretrain_steps,
+            )
+            print(
+                "Behavior energy pretrain loss:",
+                float(energy_loss["behavior_energy_loss"][-1]),
+            )
+    else:
+        behavior_energy, energy_apply_fn = None, None
     rng, rng_q = jax.random.split(rng)
     # Increase steps for iterated critic updates
     nq = args.num_updates * args.num_critic_updates_per_step
@@ -634,6 +786,7 @@ def run(args: Args) -> RunResult:
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         value=value,
         alpha=alpha,
+        behavior_energy=behavior_energy,
     )
 
     # --- Initialize buffer and rollout function ---
@@ -662,6 +815,7 @@ def run(args: Args) -> RunResult:
         q_net.apply,
         value_apply_fn,
         alpha_apply_fn,
+        energy_apply_fn,
         dataset,
         rollout_fn,
     )
