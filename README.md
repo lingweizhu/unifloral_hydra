@@ -20,12 +20,13 @@ Compared with the upstream `unifloral` repo, this fork adds:
 - database schema config in [`configs/schema/policy-schema.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/schema/policy-schema.yaml)
 - database credentials config in [`configs/db/`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/db)
 
-The training logic itself is still executed by [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py). The main change there is that the script now exposes `run(args)` so the Hydra launcher can call it and log results afterward.
+The training logic itself is mostly executed by [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py). New standalone agents can also expose their own `run(args)` entrypoint; for example BPR lives in [`algorithms/bpr.py`](/Users/lingweizhu/Desktop/workspace/unifloral_hydra/algorithms/bpr.py).
 
 ## Repo Layout
 
 - [`main.py`](/Users/lingweizhu/Desktop/workspace/unifloral/main.py): Hydra entrypoint
 - [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py): original unified training implementation
+- [`algorithms/bpr.py`](/Users/lingweizhu/Desktop/workspace/unifloral_hydra/algorithms/bpr.py): standalone Behavior Preference Regression implementation
 - [`experiment.py`](/Users/lingweizhu/Desktop/workspace/unifloral/experiment.py): MySQL logging helpers
 - [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml): default run and sweep definition
 - [`configs/agent/`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/agent): per-agent defaults
@@ -113,7 +114,7 @@ This setup is designed for exactly the workflow of:
 - multiple random seeds
 - sequential execution on a single GPU
 
-Hydra handles the Cartesian product over the sweep parameters, while the actual training is still done inside [`algorithms/unifloral.py`](/Users/lingweizhu/Desktop/workspace/unifloral/algorithms/unifloral.py).
+Hydra handles the Cartesian product over the sweep parameters, while the actual training is dispatched to the selected algorithm module.
 
 ## Agent Defaults
 
@@ -127,7 +128,7 @@ For example:
 
 These files contain the per-agent hyperparameter defaults that used to live in the old sweep presets. There is no environment-specific config group in this fork; datasets are swept directly through the top-level `dataset` field.
 
-Top-level values from [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral/configs/config.yaml) override agent defaults when both define the same key.
+Shared defaults such as optimizer settings, observation normalization, network depth/width, layer norm, policy distribution settings, target smoothing defaults, entropy defaults, and model-rollout defaults live at the top level in [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral_hydra/configs/config.yaml). Agent configs only carry the knobs that make that algorithm distinct; those agent-specific values override the shared defaults when the launcher builds the final args. A command-line top-level override such as `num_critics=2` still wins when you intentionally want to force one setting across all agents.
 
 ## MySQL Logging
 

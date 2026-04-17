@@ -4,8 +4,8 @@ command:
   - ${args_no_boolean_flags}
 entity: flair
 method: random
-name: BPR (Unifloral)
-program: algorithms/unifloral.py
+name: BPR
+program: algorithms/bpr.py
 project: unifloral
 
 parameters:
@@ -16,7 +16,7 @@ parameters:
     values:
       - halfcheetah-medium-v2
   algorithm:
-    value: unifloral_bpr
+    value: bpr
   num_updates:
     value: 1_000_000
   eval_interval:
@@ -72,7 +72,7 @@ parameters:
   log_std_max:
     value: 2.0
 
-  # --- Critic + value function architecture ---
+  # --- Critic architecture ---
   num_critics:
     value: 2
   critic_num_layers:
@@ -81,46 +81,18 @@ parameters:
     value: 256
   critic_ln:
     value: true
-
-  # --- Actor loss components ---
-  actor_bc_coef:
-    value: 0.0
-  actor_q_coef:
-    value: 0.0
-  use_q_target_in_actor:
-    value: false
-  normalize_q_loss:
-    value: false
   aggregate_q:
     value: min
 
-  # --- AWR (Advantage Weighted Regression) actor ---
-  use_awr:
-    value: false
-  awr_temperature:
-    value: 1.0
-  awr_exp_adv_clip:
-    value: 100.0
-
-  # --- Critic loss components ---
+  # --- Critic loss ---
   num_critic_updates_per_step:
     value: 2
-  critic_bc_coef:
-    value: 0.0
-  diversity_coef:
-    value: 0.0
   policy_noise:
     value: 0.0
   noise_clip:
     value: 0.0
   use_target_actor:
     value: true
-
-  # --- Value function ---
-  use_value_target:
-    value: false
-  value_expectile:
-    value: 0.7
 
   # --- Entropy loss ---
   use_entropy_loss:
@@ -133,8 +105,6 @@ parameters:
     value: 1.0
 
   # --- Behavior Preference Regression ---
-  use_bpr:
-    value: true
   bpr_lambda:
     values: [0.5, 1.0, 1.5, 2.0]
   bpr_actor_coef:

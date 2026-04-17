@@ -11,22 +11,43 @@ log = logging.getLogger(__name__)
 DB_CONFIG_KEYS = {"db", "schema", "hydra"}
 
 
-def build_args(cfg_dict):
+def get_algorithm_module(agent_name):
+    if agent_name == "bpr":
+        from algorithms import bpr
+
+        return bpr
+
+    from algorithms import unifloral
+
+    return unifloral
+
+
+def build_args(cfg_dict, args_cls):
     from dataclasses import asdict, fields
 
-    from algorithms.unifloral import Args
-
-    arg_defaults = asdict(Args())
-    arg_field_names = {field.name for field in fields(Args)}
+    arg_defaults = asdict(args_cls())
+    arg_field_names = {field.name for field in fields(args_cls)}
     arg_defaults.update({key: cfg_dict[key] for key in arg_field_names if key in cfg_dict})
-    return Args(**arg_defaults)
+    return args_cls(**arg_defaults)
 
 
-def flatten_agent_config(cfg_dict):
+def get_explicit_top_level_overrides():
+    explicit_keys = set()
+    for override in HydraConfig.get().overrides.task:
+        key = override.split("=", 1)[0].lstrip("+~")
+        key = key.split("@", 1)[0]
+        if "." not in key:
+            explicit_keys.add(key)
+    return explicit_keys
+
+
+def flatten_agent_config(cfg_dict, explicit_top_level_overrides=None):
+    explicit_top_level_overrides = explicit_top_level_overrides or set()
     agent_cfg = cfg_dict.pop("agent", {})
     if isinstance(agent_cfg, dict):
         for key, value in agent_cfg.items():
-            cfg_dict.setdefault(key, value)
+            if key not in explicit_top_level_overrides:
+                cfg_dict[key] = value
     return cfg_dict
 
 
@@ -94,11 +115,14 @@ def main(cfg: DictConfig):
         "Output directory: %s",
         HydraConfig.get().runtime.output_dir,
     )
-    cfg_dict = flatten_agent_config(OmegaConf.to_container(cfg, resolve=True))
+    cfg_dict = flatten_agent_config(
+        OmegaConf.to_container(cfg, resolve=True),
+        get_explicit_top_level_overrides(),
+    )
     metrics = make_metrics(cfg_dict)
-    from algorithms.unifloral import run as run_unifloral
+    algorithm = get_algorithm_module(cfg_dict["agent_name"])
 
-    result = run_unifloral(build_args(cfg_dict))
+    result = algorithm.run(build_args(cfg_dict, algorithm.Args))
     log_results(metrics, cfg_dict["run"], result)
 
 
