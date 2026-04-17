@@ -16,7 +16,7 @@ use_tanh_mean: false
 use_log_std_param: false
 log_std_min: -5.0
 log_std_max: 2.0
-num_critics: 10
+num_critics: 20
 critic_num_layers: 3
 critic_layer_width: 256
 critic_ln: false
@@ -30,7 +30,7 @@ awr_temperature: 1.0
 awr_exp_adv_clip: 100.0
 num_critic_updates_per_step: 1
 critic_bc_coef: 0.0
-diversity_coef: 1.0
+diversity_coef: 10.0
 policy_noise: 0.0
 noise_clip: 0.0
 use_target_actor: false

@@ -40,3 +40,11 @@ use_entropy_loss: true
 ent_coef_init: 1.0
 actor_entropy_coef: 0.0
 critic_entropy_coef: 1.0
+bpr_lambda: 1.0
+bpr_actor_coef: 1.0
+behavior_energy_lr: 1e-3
+behavior_energy_num_layers: 3
+behavior_energy_layer_width: 256
+behavior_energy_num_negatives: 16
+behavior_energy_temperature: 1.0
+behavior_energy_pretrain_steps: 100000
