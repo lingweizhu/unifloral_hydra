@@ -119,6 +119,14 @@ class ExperimentManager:
             f"({', '.join(columns)});"
         )
         cursor.execute(query)
+        cursor.execute(f"SHOW COLUMNS FROM {self._quote(table_name)};")
+        existing_columns = {row[0] for row in cursor.fetchall()}
+        for key, value in data_dict.items():
+            if key not in existing_columns:
+                cursor.execute(
+                    f"ALTER TABLE {self._quote(table_name)} "
+                    f"ADD COLUMN {self._quote(key)} {self._column_type(value)};"
+                )
         conn.commit()
         cursor.close()
         conn.close()
