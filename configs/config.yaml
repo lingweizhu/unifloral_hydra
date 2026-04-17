@@ -18,7 +18,8 @@ wandb_project: unifloral
 wandb_team: flair
 wandb_group: debug
 
-# Shared agent defaults
+# Fallback agent defaults. Each agent config overrides these with its known-good
+# algorithm recipe; keep run/eval/logging fields above for global control.
 lr: 3e-4
 actor_lr: 3e-4
 lr_schedule: cosine

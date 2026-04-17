@@ -128,7 +128,7 @@ For example:
 
 These files contain the per-agent hyperparameter defaults that used to live in the old sweep presets. There is no environment-specific config group in this fork; datasets are swept directly through the top-level `dataset` field.
 
-Shared defaults such as optimizer settings, observation normalization, network depth/width, layer norm, policy distribution settings, target smoothing defaults, entropy defaults, and model-rollout defaults live at the top level in [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral_hydra/configs/config.yaml). Agent configs only carry the knobs that make that algorithm distinct; those agent-specific values override the shared defaults when the launcher builds the final args. A command-line top-level override such as `num_critics=2` still wins when you intentionally want to force one setting across all agents.
+Run bookkeeping such as `num_updates`, evaluation cadence, final evaluation episodes, and W&B routing lives at the top level in [`configs/config.yaml`](/Users/lingweizhu/Desktop/workspace/unifloral_hydra/configs/config.yaml). Learning hyperparameters stay in the agent configs, because optimizer settings, batch size, observation normalization, layer norm, policy distribution settings, entropy coefficients, and critic shape are part of each algorithm's known-good recipe. The launcher lets those agent-specific values override the fallback defaults when it builds the final args; a command-line top-level override such as `lr=1e-3` still wins when you intentionally want to force one setting across all agents.
 
 ## MySQL Logging
 
